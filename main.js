@@ -76,15 +76,24 @@ const main = () => {
         last: undefined,
     };
     const test = [
-        [0, 0, 6, 8, 0, 2, 0, 0, 5],
-        [0, 0, 0, 0, 3, 0, 7, 0, 0],
-        [0, 0, 0, 0, 0, 0, 8, 2, 4],
-        [1, 0, 0, 4, 8, 0, 0, 0, 0],
-        [0, 9, 0, 0, 0, 0, 0, 0, 0],
-        [0, 3, 0, 0, 1, 0, 2, 5, 0],
-        [4, 5, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 6, 0],
-        [0, 0, 0, 1, 7, 0, 0, 3, 0],
+        [8, 0, 4, 7, 6, 0, 1, 0, 0],
+        [0, 6, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 2, 0, 0, 0, 9],
+        [0, 0, 0, 0, 0, 8, 0, 1, 0],
+        [7, 0, 5, 4, 0, 0, 8, 0, 0],
+        [3, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 6, 0, 0, 0, 0, 0],
+        [5, 0, 6, 0, 7, 0, 0, 2, 0],
+        [0, 3, 0, 0, 0, 0, 5, 0, 0],
+        // [0, 0, 6, 8, 0, 2, 0, 0, 5],
+        // [0, 0, 0, 0, 3, 0, 7, 0, 0],
+        // [0, 0, 0, 0, 0, 0, 8, 2, 4],
+        // [1, 0, 0, 4, 8, 0, 0, 0, 0],
+        // [0, 9, 0, 0, 0, 0, 0, 0, 0],
+        // [0, 3, 0, 0, 1, 0, 2, 5, 0],
+        // [4, 5, 0, 0, 0, 0, 0, 0, 0],
+        // [0, 0, 0, 0, 0, 0, 0, 6, 0],
+        // [0, 0, 0, 1, 7, 0, 0, 3, 0],
     ];
     for (const [x, y] of GRID) {
         const v = test[y][x];
@@ -288,14 +297,15 @@ const draw = (G) => {
 const reset = (G) => {
     for (const [x, y] of GRID) {
         const c = G.G[y][x];
+        if ((G.state != STATE.ENTRY) && c.fixed) { continue; }
         c.value = 0;
         c.notes = 0;
         c.fixed = false;
         c.closed = false;
     }
-    G.moves.length = 0;
     G.x = -1;
     G.y = -1;
+    G.moves.length = 0;
     G.last = undefined;
 };
 
@@ -355,8 +365,9 @@ const get_moves = (G) => {
         const b = (1 << v);
         if (v == 0) {
             if (!c.closed) { continue; }
+            X[y][x] = (1 << 10);
             for (let i = 1; i <= 9; ++i) {
-                X[y][x] |= ~c.notes;
+                X[y][x] |= (~c.notes) & (1 << i);
             }
             continue;
         }
@@ -370,7 +381,7 @@ const get_moves = (G) => {
             X[i][x] |= b;
             X[sy][sx] |= b;
         }
-        X[y][x] = ~b;
+        X[y][x] = ((1 << 11) - 1) & ~b;
     }
     for (let i = 0; i < 9; ++i) {
         const b = (1 << i);
@@ -456,7 +467,7 @@ const get_moves = (G) => {
             const b = (1 << i);
             for (let y = 0; y < 9; ++y) {
                 if (!(X[y][x] & b)) {
-                    H[i] |= (1 << x);
+                    H[i] |= (1 << y);
                     ++C[i];
                     F[i].push([x, y]);
                 }
@@ -478,7 +489,7 @@ const get_moves = (G) => {
             const b = (1 << i);
             for (const [x, y] of B) {
                 if (!(X[y][x] & b)) {
-                    H[i] |= (1 << x);
+                    H[i] |= (1 << b);
                     ++C[i];
                     F[i].push([x, y]);
                 }
@@ -544,7 +555,7 @@ const make_move = (G) => {
             const [type, i, j, x1, y1, x2, y2] = M;
             const c1 = G.G[y1][x1];
             const c2 = G.G[y2][x2];
-            c1.notes = c2.notes = (1 << i) | (1 << j);
+            c1.notes = c2.notes = (1 << i) | (1 << j) | (1 << 10);
             c1.closed = c2.closed = true;
             } break;
     }
@@ -580,9 +591,19 @@ const move_text = (M) => {
             const b = Math.floor(x1/3) + 3*Math.floor(y1/3) + 1;
             return "Pair in Box: " +
                 `In B${b}, ${i} can only appear in R${
-                x1 + 1}C${y1 + 1} and R${x2 + 1}C${y2 + 1}.`;
+                y1 + 1}C${x1 + 1} and R${y2 + 1}C${x2 + 1}.`;
             } break;
         case MOVE.NOTED_PAIR:
-        case MOVE.NAKED_PAIR:
+        case MOVE.NAKED_PAIR: {
+            const [type, i, j, x1, y1, x2, y2] = M;
+            const b = Math.floor(x1/3) + 3*Math.floor(y1/3) + 1;
+            const prefix = ((y1 == y2)
+                ? ("R" + (y1 + 1)) : ((x1 == x2)
+                ? ("C" + (x1 + 1)) : ("B" + b)
+            ));
+            return "Naked Pair: " +
+                `In ${prefix}, ${i} and ${j} can only appear in R${
+                y1 + 1}C${x1 + 1} and R${y2 + 1}C${x2 + 1}.`;
+            } break;
     }
 };
